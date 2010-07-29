@@ -48,21 +48,16 @@ public class NodePastryGrid {
 	public static String ftcDirectory = pastryDirectory + "ftc/";
 	public String caracteristicsFile = "characteristics.xml";
 	public Boolean submissionNodeCanWork = true;
-	public int bindport;
-	public InetSocketAddress bootaddress;
+  public InetAddress bindAddress;
+	public int bindPort;
 	public static List<InetSocketAddress> bootstrapAddresses = new ArrayList<InetSocketAddress>();
 
-	public NodePastryGrid(int bindport, InetSocketAddress bootaddress) {
+	public NodePastryGrid(InetAddress bindAddress, int bindPort) {
 		super();
-
-		this.bindport = bindport;
-		this.bootaddress = bootaddress;
+    this.bindAddress = bindAddress;
+		this.bindPort = bindPort;
 	}
 
-	public void setBootaddress(InetSocketAddress bootaddress) {
-		this.bootaddress = bootaddress;
-	}
-	
 	public void createEnvironment() {
 		environment = new Environment();
 		environment.getParameters().setString("nat_network_prefixes", "10.;192.168.");
@@ -73,54 +68,21 @@ public class NodePastryGrid {
 	}
 
 	public boolean createNode() {
-		
 		try{		    
 			NodeIdFactory nidFactory = new RandomNodeIdFactory(environment);
-			SocketPastryNodeFactory factory = new SocketPastryNodeFactory(nidFactory, bindport, environment);
-			
-			int i = 0;
-			int maxAttempts = 30;
-			int attempts = 0;
-			NodeHandle bootHandle = null;
-			boolean success = false;
-			while(!success && i<=20){ //test twice for every bootstrap				
-				try{					
-					bootHandle = factory.getNodeHandle(Main.getBootaddress((int)Math.floor(i/2)));
-					i++;
-					System.out.println(i+") "+bootHandle);
-					node = factory.newNode(bootHandle);
-					synchronized (node) {
-						while (!node.isReady() && !node.joinFailed() && attempts < maxAttempts) {
-							attempts++;
-							if(attempts == maxAttempts)
-								throw new Exception("timeout");
-							node.wait(500L);
-							if (node.joinFailed()) {
-								throw new IOException(
-										"Could not join the PastryGrid ring.  Reason: "
-												+ node.joinFailedReason());
-							}
-						}						
-					}
-					success = true;
-				}catch(Exception e){
-						System.err.println("Joining ring failed from node "+node+" to bootstrap "+bootHandle);
-						node.destroy();
-						factory = new SocketPastryNodeFactory(nidFactory, bindport, environment);
-				}
-			}
-			if(i > 20){
-				System.err.println("Joining ring failed. Node couldn't connect");
-				System.exit(1);
-			}
-			
-		} catch (Exception e) {
-			//e.printStackTrace();
-			return false;
-			//System.exit(1);
-		}
-		System.out.println("Finished creating new node " + node.getId().toStringFull()+"\n"+node);
-		return true;
+      SocketPastryNodeFactory factory = new SocketPastryNodeFactory(nidFactory,
+          bindAddress, bindPort, environment);
+			node = factory.newNode();
+      node.boot(new InetSocketAddress(bindAddress, bindPort));
+      synchronized(node) {
+        while(!node.isReady()) {
+          node.wait(500L);
+        }
+      }
+		} catch(Exception e) {
+      throw new RuntimeException(e);
+    }
+    return true;
 	}
 
 	public void createDirectories() {
@@ -413,7 +375,7 @@ public class NodePastryGrid {
 			int nbcores = 1;
 			String cpumodel = "";
 			
-			ip = Main.getIp();
+			ip = Main.getIp().getHostAddress();
 
 			try{
 				OperatingSystemMXBean composantSystem = (OperatingSystemMXBean) ManagementFactory

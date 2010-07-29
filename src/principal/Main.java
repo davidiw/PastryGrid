@@ -6,15 +6,16 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.NetworkInterface;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.Enumeration;
 import java.util.Vector;
 
 import rice.pastry.Id;
 import rice.pastry.PastryNode;
 import rice.pastry.leafset.LeafSet;
 
-import lan.NodesOnSameLan;
 import messages.GetNodesExecutingTasks;
 import messages.MyApplicationResult;
 import messages.StopWorking;
@@ -22,22 +23,21 @@ import messages.StopWorking;
 public class Main {
 	public static ApplicationPastryGrid App = null;
 	public static InetAddress ext = null;
-	public static int bindport = 0;
+	public static int bindPort = 0;
 	
-	public static String internalIP = "";
+	public static InetAddress bindAddress;
 
 	public static void join() {		
-		new NodesOnSameLan(30);
-		internalIP = getIp();
-		bindport = getPort();		
-		//System.out.println("bindport = "+bindport);
-		NodePastryGrid NPG;
-		InetSocketAddress bootaddress = getBootaddress(0);
-		NPG = new NodePastryGrid(bindport, bootaddress);
+    java.util.Random r = new java.util.Random();
+		bindPort = r.nextInt(55535) + 10000;
+		bindAddress = getIp();
+		//System.out.println("bindPort = "+bindPort);
+		NodePastryGrid NPG = new NodePastryGrid(bindAddress, bindPort);
 		NPG.createEnvironment();
 		NPG.createNode();
 		NPG.createDirectories();
 		NPG.saveDesktopCaracteristics();
+		new multicastDiscovery(bindAddress, bindPort, NPG);
 
 		App = new ApplicationPastryGrid(NPG);
 		int sec = 10;
@@ -64,104 +64,31 @@ public class Main {
 	}
 
 
-	public static String getIp(){
-		String ip = "127.0.0.1";
+	public static InetAddress getIp(){
 		try {
-			ip = InetAddress.getLocalHost().getHostAddress();
-			//if(ip.startsWith("127"))
-			//	ip = InetAddress.getLocalHost().getHostName();
-			if(ip.startsWith("127")){
-				//System.out.println("ip by socket");
-				Socket s = new Socket();//("192.168.1.1", 80); 
-				s.connect(new InetSocketAddress("192.168.1.1", 80), 2000);
-				ip = s.getLocalAddress().getHostAddress(); 
-				s.close(); 
-			}
-			
-		} catch (UnknownHostException e) {
-			//e.printStackTrace();
-		} catch (Exception e) {
-			//e.printStackTrace();
-			//System.out.println("error ip by socket");
-		}
-		return ip;
-	}
+      InetAddress ip = InetAddress.getLocalHost();
+      for(Enumeration nis = NetworkInterface.getNetworkInterfaces(); nis.hasMoreElements(); ) {
+        NetworkInterface ni = (NetworkInterface) nis.nextElement();
+        
+        for(Enumeration ips = ni.getInetAddresses(); ips.hasMoreElements();) {
+          ip = (InetAddress) ips.nextElement();
+          String ipstr = ip.getHostAddress();
+          System.out.println(ipstr);
+          // Replace the 5. with whatever base network you want to bind with...
+          if(ipstr.startsWith("5.")) {
+            return ip;
+          }
+        }
+      }
+      return ip;
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+  }
 
-	public static InetAddress getInetAddress(){
-		InetAddress ip = null;
-		try {
-			ip = InetAddress.getLocalHost();
-			
-			if(ip.getHostAddress().startsWith("127")){
-				Socket s = new Socket();//("192.168.1.1", 80); 
-				s.connect(new InetSocketAddress("192.168.1.1", 80), 2000);
-				ip = s.getLocalAddress(); 
-				s.close(); 
-			}
-			
-		} catch (UnknownHostException e) {
-			//e.printStackTrace();
-		} catch (Exception e) {
-			//e.printStackTrace();
-			//System.out.println("error inetAddr by socket");
-		}
-		
-		return ip;
-	}
-	
-	public static int getPort(){
-		int port = 7000;
-		Vector<Integer> ports = new Vector<Integer>();
-		for(int i = 0; i< NodesOnSameLan.nodes.size(); i++)
-			ports.add(NodesOnSameLan.nodes.get(i).getPort());
-			
-		
-		if(ports.size()>0)
-			while(port< 65000 && exist(port,ports))
-				port++;			
-			//port = max(ports)+1;
-		if(port == 0)
-			port = 7000;
-		
-		return port;
-	}
-	
-	public static InetSocketAddress getBootaddress(int i){		
-		if(NodesOnSameLan.nodes.size() > 0 && i<NodesOnSameLan.nodes.size())
-			return NodesOnSameLan.nodes.get(i);
-		
-		System.out.println(internalIP+":"+bindport);
-		return new InetSocketAddress(internalIP, bindport);
-	}
-	/*
-
-	@SuppressWarnings("unchecked")
-	public static InetSocketAddress getBootaddress(){
-		Element root = TaskPastryGrid.getRoot(NodePastryGrid.nodeDirectory+"nodes.xml");
-		//String ip = getIp();
-		String ExtIp = PastryGridClient.getExternalIp();
-		if(root != null){
-			List<Element> nodes = root.getChildren("Node");
-			for(int i=0; i< nodes.size(); i++)
-				if(PastryGridClient.getMacAddress().compareTo(nodes.get(i).getAttributeValue("mac")) == 0)
-					if(nodes.get(i).getAttributeValue("externalIP").compareTo(ExtIp)!= 0)
-						NodePastryGrid.bootstrapAddresses.add(new InetSocketAddress(nodes.get(i).getAttributeValue("externalIP"),
-								Integer.parseInt(nodes.get(i).getAttributeValue("externalPort"))));
-					else
-						NodePastryGrid.bootstrapAddresses.add(new InetSocketAddress(nodes.get(i).getAttributeValue("internalIP"),
-								Integer.parseInt(nodes.get(i).getAttributeValue("internalPort"))));
-					
-		}
-		if(NodePastryGrid.bootstrapAddresses.size()>0)
-		System.out.println(NodePastryGrid.bootstrapAddresses.get(0));
-		return null;
-	}
-	*/
-	
 	public static void runApplication(String appPath) {
 		if (App == null) {
-			System.out
-					.println("you have to join ring first, then you can run your application");
+			System.out.println("you have to join ring first, then you can run your application");
 		} else {
 			if (new File(appPath).exists())
 				App.runApplication(appPath);
@@ -250,7 +177,6 @@ public class Main {
 		if(App.NPG.node != null)
 			App.NPG.node.destroy();
 		
-		NodesOnSameLan.stop();
 		System.out.println("Node disconnected");		
 	}
 	
