@@ -1,0 +1,4 @@
+Rsrc-Class-Path: ./ jdom.jar xmlpull_1_1_3_4b.jar FreePastry-2.1.jar jline-0.9.94.jar xpp3-1.1.3.4.O.jar
+Class-Path: .
+Rsrc-Main-Class: principal.Main
+Main-Class: org.eclipse.jdt.internal.jarinjarloader.JarRsrcLoader
