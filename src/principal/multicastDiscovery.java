@@ -7,6 +7,7 @@ import java.net.InetSocketAddress;
 import java.net.InterfaceAddress;
 import java.net.MulticastSocket;
 import java.net.SocketException;
+import java.util.Date;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Vector;
@@ -28,7 +29,6 @@ public class multicastDiscovery extends Thread {
     this.pastryPort = pastryPort;
     this.npg = npg;
 		start();
-		sendMulticast(multicast, bindPort);
 	}
 	
   @Override
@@ -38,12 +38,26 @@ public class multicastDiscovery extends Thread {
       InetAddress group = InetAddress.getByName(multicastDiscovery.multicast);
       socket.setInterface(pastryAddress);
       socket.joinGroup(group);
+      socket.setSoTimeout(60000);
+      long next = 0;
 
 			byte[] buffer = new byte[10];
 			DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
 
 			while (true) {
-				socket.receive(packet);
+        if(npg.node.getLeafSet().size() < 15) {
+          long current = (new Date()).getTime();
+          if(next < current) {
+            next = current + 60000;
+		        sendMulticast(multicast, bindPort);
+          }
+        }
+        try {
+  				socket.receive(packet);
+        } catch(java.io.InterruptedIOException e) {
+          continue;
+        }
+
 				String data = new String(packet.getData(), 0, packet.getLength());
 				InetAddress clientAddress = packet.getAddress();
 				System.out.println("UDP received from : " +clientAddress.getHostAddress() + " : "	+ data);
